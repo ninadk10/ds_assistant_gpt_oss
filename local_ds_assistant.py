@@ -1,0 +1,274 @@
+#!/usr/bin/env python3
+"""
+Local Data Scientist Assistant using ollama + openai/gpt-oss-20b.
+
+Flow:
+ 1. Read CSV (path provided as CLI arg).
+ 2. Send a small sample and schema to the model and request a JSON analysis plan.
+ 3. For each step in the plan, save the provided Python snippet to a temp file and run it in a subprocess.
+ 4. Collect outputs (stdout, created image files), show them to the model, allow model to refine the next step.
+"""
+
+import argparse
+import json
+import os
+import shlex
+import subprocess
+import sys
+import tempfile
+import textwrap
+import uuid
+from pathlib import Path
+
+import pandas as pd
+
+# ---------- Configuration ----------
+OLLAMA_MODEL = "gpt-oss:20b"  # make sure you've pulled this with `ollama pull gpt-oss:20b`
+OLLAMA_CMD = ["ollama", "run", OLLAMA_MODEL, "--format", "json"]
+# Note: On some setups /set format json or other flags might be used; --format json is supported in CLI.
+# See Ollama docs / OpenAI Cookbook for details. :contentReference[oaicite:1]{index=1}
+
+# Timeout for subprocess python runs (seconds)
+EXEC_TIMEOUT = 30
+
+# Directory to store artifacts (plots, csv outputs)
+ARTIFACTS_DIR = Path("artifacts")
+ARTIFACTS_DIR.mkdir(exist_ok=True)
+
+
+# ---------- Helper functions ----------
+def call_ollama_with_prompt(prompt_text):
+    """
+    Call ollama CLI with the given prompt_text, return parsed JSON response (if JSON)
+    Expectation: using --format json will constrain model output to JSON.
+    """
+    try:
+        proc = subprocess.run(
+            OLLAMA_CMD + [prompt_text],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except FileNotFoundError:
+        print("Error: `ollama` CLI not found. Install Ollama and pull gpt-oss:20b first.", file=sys.stderr)
+        sys.exit(1)
+
+    stdout = proc.stdout.strip()
+    stderr = proc.stderr.strip()
+    if stderr:
+        # Ollama may write logs to stderr; print for debugging but continue
+        print(f"[ollama stderr] {stderr}", file=sys.stderr)
+
+    # Try to parse JSON. Ollama with --format json should give JSON directly.
+    try:
+        parsed = json.loads(stdout)
+        return parsed
+    except json.JSONDecodeError:
+        # If not valid JSON, return raw wrapped object
+        return {"raw": stdout}
+
+
+def make_initial_prompt_sample(sample_df: pd.DataFrame, n_rows: int = 5):
+    """
+    Build a prompt describing the dataset and asking for a JSON plan.
+    We instruct the model to return JSON with schema:
+    {
+      "analysis_plan": [
+        {"id": 1, "title":"", "description":"", "code":"<python code string>"}
+      ],
+      "notes":"optional"
+    }
+    The 'code' should be runnable as a standalone snippet; available variable: DATASET_PATH
+    """
+    sample_csv = sample_df.head(n_rows).to_csv(index=False)
+    schema_instructions = textwrap.dedent(
+        """
+        You are a helpful, expert data scientist assistant.
+        I will give you a short CSV sample and the dataset path (DATASET_PATH). 
+        Produce a JSON plan (and ONLY JSON) with the following schema:
+
+        {
+          "analysis_plan":[
+            {
+              "id": int,
+              "title": string,
+              "description": string,
+              "code": string
+            }
+          ],
+          "notes": string
+        }
+
+        Guidelines:
+         - Each 'code' entry should be a self-contained Python snippet that:
+             * uses 'pandas' (import pandas as pd), 'numpy' if needed
+             * reads dataset from DATASET_PATH if it needs full data,
+             * writes any plots to files (use plt.savefig("artifacts/<unique-name>.png")) if plotting,
+             * prints a short JSON-summary to stdout (so we can capture it).
+         - Keep snippets under ~120 lines.
+         - The plan can have 3-6 steps: quick EDA, one substantive analysis or model (e.g., clustering, feature importance), and a visualization step.
+         - Use descriptive titles.
+         - Do NOT include markdown or extraneous text—ONLY the JSON object described above.
+         - Be conservative with compute: avoid training large ML models — prefer stats, clustering, or small examples.
+
+        Here is a CSV sample (first rows). Use it to infer column types:
+        -------------------------
+        {sample_csv}
+        -------------------------
+        """
+    ).strip()
+
+    prompt = f"{schema_instructions}\n\nDATASET_PATH = '{os.path.abspath(DATASET_PATH_GLOBAL)}'\n"
+    return prompt
+
+
+def write_and_run_code(code_snippet: str, dataset_path: str):
+    """
+    Write the code to a temp file and run it in a new Python process.
+    Returns: dict with keys: returncode, stdout, stderr, artifacts (list of generated files)
+    """
+    unique_id = uuid.uuid4().hex[:8]
+    fname = ARTIFACTS_DIR / f"step_{unique_id}.py"
+    # Ensure the artifacts directory is available in the code snippet's working directory
+    wrapper = textwrap.dedent(
+        f"""
+        # Auto-generated by Local DS Assistant
+        import json, sys, os
+        import pandas as pd
+        import numpy as np
+        import matplotlib
+        matplotlib.use('Agg')  # use non-GUI backend
+        import matplotlib.pyplot as plt
+
+        # make ARTIFACTS_DIR available
+        ARTIFACTS_DIR = {repr(str(ARTIFACTS_DIR))}
+        os.makedirs(ARTIFACTS_DIR, exist_ok=True)
+
+        DATASET_PATH = {repr(str(dataset_path))}
+
+        # User snippet begins
+        {code_snippet}
+
+        # User snippet ends
+        """
+    )
+    fname.write_text(wrapper, encoding="utf-8")
+
+    try:
+        proc = subprocess.run(
+            [sys.executable, str(fname)],
+            capture_output=True,
+            text=True,
+            timeout=EXEC_TIMEOUT,
+        )
+        stdout = proc.stdout
+        stderr = proc.stderr
+        returncode = proc.returncode
+    except subprocess.TimeoutExpired as e:
+        return {"returncode": -1, "stdout": "", "stderr": f"Timeout after {EXEC_TIMEOUT}s", "artifacts": []}
+
+    # find artifacts produced (images/csvs) with naming pattern since we saved into ARTIFACTS_DIR
+    artifacts = []
+    for p in ARTIFACTS_DIR.iterdir():
+        # collect recent artifacts (modified in the last 60 seconds)
+        try:
+            if (p.is_file() and (p.stat().st_mtime > (pd.Timestamp.now().timestamp() - 60))):
+                artifacts.append(str(p))
+        except Exception:
+            pass
+
+    return {"returncode": returncode, "stdout": stdout, "stderr": stderr, "artifacts": artifacts}
+
+
+# ---------- Main orchestration ----------
+def main():
+    parser = argparse.ArgumentParser(description="Local Data Scientist Assistant using gpt-oss-20b (Ollama).")
+    parser.add_argument("csv_path", help="Path to CSV dataset")
+    args = parser.parse_args()
+
+    csv_path = Path(args.csv_path)
+    if not csv_path.exists():
+        print("CSV path does not exist:", csv_path, file=sys.stderr)
+        sys.exit(2)
+
+    # Read a sample to send to the model
+    df = pd.read_csv(csv_path)
+    print(f"Loaded CSV with shape {df.shape}. Sending a sample to the model...")
+
+    # Build prompt and call Ollama
+    prompt = make_initial_prompt_sample(df, n_rows=5)
+    print("Calling Ollama to get analysis plan (this may take a while for the model to generate).")
+    ollama_resp = call_ollama_with_prompt(prompt)
+
+    # Parse response
+    if "analysis_plan" in ollama_resp:
+        plan = ollama_resp["analysis_plan"]
+        notes = ollama_resp.get("notes", "")
+    elif "raw" in ollama_resp:
+        # the response came back as raw string; try to parse JSON inside
+        try:
+            parsed = json.loads(ollama_resp["raw"])
+            plan = parsed.get("analysis_plan", [])
+            notes = parsed.get("notes", "")
+        except Exception as e:
+            print("Failed to parse JSON from model output. Raw output below:\n")
+            print(ollama_resp["raw"])
+            sys.exit(3)
+    else:
+        print("Unexpected response from Ollama. Full response:")
+        print(json.dumps(ollama_resp, indent=2))
+        sys.exit(4)
+
+    print("Model produced a plan with", len(plan), "steps.")
+    for step in plan:
+        sid = step.get("id", "<no-id>")
+        title = step.get("title", "")
+        description = step.get("description", "")
+        code = step.get("code", "")
+        print(f"\n--- Step {sid}: {title} ---")
+        print(description)
+        print("\nRunning code snippet for this step...")
+
+        # Run the snippet
+        result = write_and_run_code(code, str(csv_path))
+        print("Return code:", result["returncode"])
+        if result["stdout"]:
+            print("[snippet stdout]\n", result["stdout"])
+        if result["stderr"]:
+            print("[snippet stderr]\n", result["stderr"], file=sys.stderr)
+        if result["artifacts"]:
+            print("Artifacts produced:")
+            for a in result["artifacts"]:
+                print(" -", a)
+
+        # Provide execution result back to model and ask for refinement (optional)
+        feedback_prompt = {
+            "message_type": "analysis_feedback",
+            "step_id": sid,
+            "stdout": result["stdout"][:5000],  # cap size
+            "stderr": result["stderr"][:2000],
+            "artifacts": result["artifacts"],
+            "note": "If you want to refine the code for the next step, respond with updated JSON following the same schema. Otherwise return {\"action\":\"continue\"}."
+        }
+        feedback_text = json.dumps(feedback_prompt, indent=2)
+        followup_call = call_ollama_with_prompt(
+            "We executed step {id}. Here are the results:\n\n".format(id=sid) + feedback_text
+        )
+        # If the model returns updated plan or instructions, you could parse and apply them.
+        # For simplicity, we'll just print the followup.
+        print("Model follow-up (optional):")
+        print(json.dumps(followup_call, indent=2))
+
+    print("\nAll steps executed. Check the artifacts/ folder for any saved plots or CSVs.")
+    print("If you want to iterate, re-run this script after adjusting prompts or dataset.")
+
+
+# small global variable used in prompt builder
+DATASET_PATH_GLOBAL = os.environ.get("DATASET_PATH_GLOBAL", "")
+
+if __name__ == "__main__":
+    # Expect DATASET_PATH_GLOBAL to be used in prompt builder; but main reads CSV path from args.
+    # Set this so the prompt builder will include path
+    if len(sys.argv) >= 2:
+        DATASET_PATH_GLOBAL = sys.argv[1]
+    main()
