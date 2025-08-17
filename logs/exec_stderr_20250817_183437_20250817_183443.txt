@@ -1,0 +1,36 @@
+Traceback (most recent call last):
+  File "C:\Users\ninad\Documents\Data-code\Projects\py_nl_2_code\artifacts\gen_20250817_183437.py", line 2, in <module>
+    from sklearn.datasets import load_iris
+  File "C:\Users\ninad\anaconda3\lib\site-packages\sklearn\__init__.py", line 73, in <module>
+    from .base import clone  # noqa: E402
+  File "C:\Users\ninad\anaconda3\lib\site-packages\sklearn\base.py", line 19, in <module>
+    from .utils._estimator_html_repr import _HTMLDocumentationLinkMixin, estimator_html_repr
+  File "C:\Users\ninad\anaconda3\lib\site-packages\sklearn\utils\__init__.py", line 15, in <module>
+    from ._chunking import gen_batches, gen_even_slices
+  File "C:\Users\ninad\anaconda3\lib\site-packages\sklearn\utils\_chunking.py", line 11, in <module>
+    from ._param_validation import Interval, validate_params
+  File "C:\Users\ninad\anaconda3\lib\site-packages\sklearn\utils\_param_validation.py", line 17, in <module>
+    from .validation import _is_arraylike_not_scalar
+  File "C:\Users\ninad\anaconda3\lib\site-packages\sklearn\utils\validation.py", line 21, in <module>
+    from ..utils._array_api import _asarray_with_order, _is_numpy_namespace, get_namespace
+  File "C:\Users\ninad\anaconda3\lib\site-packages\sklearn\utils\_array_api.py", line 17, in <module>
+    from .fixes import parse_version
+  File "C:\Users\ninad\anaconda3\lib\site-packages\sklearn\utils\fixes.py", line 17, in <module>
+    import scipy.stats
+  File "C:\Users\ninad\anaconda3\lib\site-packages\scipy\stats\__init__.py", line 606, in <module>
+    from ._stats_py import *
+  File "C:\Users\ninad\anaconda3\lib\site-packages\scipy\stats\_stats_py.py", line 49, in <module>
+    from . import distributions
+  File "C:\Users\ninad\anaconda3\lib\site-packages\scipy\stats\distributions.py", line 11, in <module>
+    from . import _discrete_distns
+  File "C:\Users\ninad\anaconda3\lib\site-packages\scipy\stats\_discrete_distns.py", line 10, in <module>
+    from scipy.interpolate import interp1d
+  File "C:\Users\ninad\anaconda3\lib\site-packages\scipy\interpolate\__init__.py", line 167, in <module>
+    from ._interpolate import *
+  File "C:\Users\ninad\anaconda3\lib\site-packages\scipy\interpolate\_interpolate.py", line 14, in <module>
+    from . import _fitpack_py
+  File "C:\Users\ninad\anaconda3\lib\site-packages\scipy\interpolate\_fitpack_py.py", line 8, in <module>
+    from ._fitpack_impl import bisplrep, bisplev, dblint  # noqa: F401
+  File "C:\Users\ninad\anaconda3\lib\site-packages\scipy\interpolate\_fitpack_impl.py", line 103, in <module>
+    'iwrk': array([], dfitpack_int), 'u': array([], float),
+TypeError

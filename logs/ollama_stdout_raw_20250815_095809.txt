@@ -1,0 +1,25 @@
+Thinking...
+We need to output only code block with Python code. Must plot sine wave using matplotlib, save as sine.png. Self-contained and runnable: import numpy, matplotlib.pyplot. Use plt.figure, plot, set title, labels, savefig, maybe close. Provide code.
+...done thinking.
+
+```python
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Generate data
+x = np.linspace(0, 2 * np.pi, 1000)
+y = np.sin(x)
+
+# Plot
+plt.figure(figsize=(8, 4))
+plt.plot(x, y, label='sin(x)')
+plt.title('Sine Wave')
+plt.xlabel('x')
+plt.ylabel('sin(x)')
+plt.grid(True)
+plt.legend()
+
+# Save figure
+plt.savefig('sine.png')
+plt.close()
+```

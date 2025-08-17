@@ -1,0 +1,63 @@
+Thinking...
+We need to write Python code that fetches current top 5 stories from Hacker News API, prints titles and URLs. The HN API: https://hacker-news.firebaseio.com/v0/topstories.json returns array of IDs. Then for each ID, fetch item: https://hacker-news.firebaseio.com/v0/item/<id>.json returns JSON with title and url. Need top 5. We need to print title and URL. Use requests. Need to be self-contained and runnable. We can include import requests. Maybe handle missing url. Also include main guard.
+
+Also note that some top stories may be missing url? For simplicity, print "No URL" if missing.
+
+Let's produce code. Use requests.get, raise for status. parse JSON. For top 5 IDs, fetch each, then print.
+
+Will the environment have requests? Assume yes. But could use urllib. But requests is more convenient. Provide code accordingly.
+
+Also include minimal error handling.
+
+We output code only. Let's write:
+
+```python
+import requests
+
+def main():
+    top_url = "https://hacker-news.firebaseio.com/v0/topstories.json"
+    item_url = "https://hacker-news.firebaseio.com/v0/item/{}.json"
+    try:
+        ids = requests.get(top_url, timeout=10).json()
+    except Exception as e:
+        print(f"Error fetching top stories: {e}")
+        return
+    for i, item_id in enumerate(ids[:5], 1):
+        try:
+            item = requests.get(item_url.format(item_id), timeout=10).json()
+            title = item.get("title", "No title")
+            url = item.get("url", "No URL")
+            print(f"{i}. {title}\n   {url}")
+        except Exception as e:
+            print(f"Error fetching item {item_id}: {e}")
+
+if __name__ == "__main__":
+    main()
+```
+
+Yes. Ensure code only.
+...done thinking.
+
+```python
+import requests
+
+def main():
+    top_url = "https://hacker-news.firebaseio.com/v0/topstories.json"
+    item_url = "https://hacker-news.firebaseio.com/v0/item/{}.json"
+    try:
+        ids = requests.get(top_url, timeout=10).json()
+    except Exception as e:
+        print(f"Error fetching top stories: {e}")
+        return
+    for i, item_id in enumerate(ids[:5], 1):
+        try:
+            item = requests.get(item_url.format(item_id), timeout=10).json()
+            title = item.get("title", "No title")
+            url = item.get("url", "No URL")
+            print(f"{i}. {title}\n   {url}")
+        except Exception as e:
+            print(f"Error fetching item {item_id}: {e}")
+
+if __name__ == "__main__":
+    main()
+```

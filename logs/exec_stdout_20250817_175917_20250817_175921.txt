@@ -1,0 +1,10 @@
+1. LL3M: Large Language 3D Modelers
+   https://threedle.github.io/ll3m/
+2. Who does your assistant serve?
+   https://xeiaso.net/blog/2025/who-assistant-serve/
+3. Derivatives, Gradients, Jacobians and Hessians
+   https://blog.demofox.org/2025/08/16/derivatives-gradients-jacobians-and-hessians-oh-my/
+4. LinkedIn rewards mediocrity
+   https://www.elliotcsmith.com/linkedin-toxic-mediocrity/
+5. Faster Index I/O with NVMe SSDs
+   https://www.marginalia.nu/log/a_123_index_io/
